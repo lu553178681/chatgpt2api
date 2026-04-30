@@ -62,11 +62,15 @@ export type SettingsConfig = {
 };
 
 export type ManagedImage = {
-  path?: string;
+  rel: string;
   name: string;
   date: string;
   size: number;
   url: string;
+  thumbnail_url?: string;
+  width?: number;
+  height?: number;
+  tags?: string[];
   created_at: string;
 };
 
@@ -320,6 +324,24 @@ export async function fetchManagedImages(filters: { start_date?: string; end_dat
 
 export async function deleteManagedImages(body: { paths?: string[]; start_date?: string; end_date?: string; all_matching?: boolean }) {
   return httpRequest<{ removed: number }>("/api/images/delete", { method: "POST", body });
+}
+
+export async function deleteImages(paths: string[]) {
+  return httpRequest<{ removed: number }>("/api/images", {
+    method: "DELETE",
+    body: { paths },
+  });
+}
+
+export async function fetchImageTags() {
+  return httpRequest<{ tags: string[] }>("/api/images/tags");
+}
+
+export async function setImageTags(path: string, tags: string[]) {
+  return httpRequest<{ ok: boolean; tags: string[] }>("/api/images/tags", {
+    method: "POST",
+    body: { path, tags },
+  });
 }
 
 export async function fetchSystemLogs(filters: { type?: string; start_date?: string; end_date?: string }) {

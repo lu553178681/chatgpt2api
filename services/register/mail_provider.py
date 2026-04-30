@@ -217,7 +217,9 @@ class CloudflareTempMailProvider(BaseMailProvider):
         return {} if resp.status_code == 204 else resp.json()
 
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
-        data = self._request("POST", "/admin/new_address", headers={"x-admin-auth": self.admin_password}, payload={"enablePrefix": True, "name": username or _random_mailbox_name(), "domain": _next_domain(self.domain)})
+        endpoint = "/admin/new_address" if self.admin_password else "/api/new_address"
+        headers = {"x-admin-auth": self.admin_password} if self.admin_password else {}
+        data = self._request("POST", endpoint, headers=headers, payload={"enablePrefix": True, "name": username or _random_mailbox_name(), "domain": _next_domain(self.domain)})
         address = str(data.get("address") or "").strip()
         token = str(data.get("jwt") or "").strip()
         if not address or not token:

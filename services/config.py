@@ -138,6 +138,12 @@ class ConfigStore:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    @property
+    def thumbnail_dir(self) -> Path:
+        path = DATA_DIR / "image-thumbnails"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     def cleanup_old_images(self) -> int:
         cutoff = time.time() - self.image_retention_days * 86400
         removed = 0
@@ -150,6 +156,9 @@ class ConfigStore:
                 path.rmdir()
             except OSError:
                 pass
+        if removed:
+            from services.thumbnail_service import cleanup_orphaned_thumbnails
+            cleanup_orphaned_thumbnails()
         return removed
 
     @property

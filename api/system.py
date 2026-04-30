@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 
 from api.support import require_admin, require_identity, resolve_image_base_url
 from services.config import config
 from services.image_service import delete_images, list_images
+from services.image_tags_service import get_all_tags, remove_tags, set_tags
 from services.log_service import log_service
 from services.proxy_service import test_proxy
+from services.thumbnail_service import delete_thumbnail, get_thumbnail
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -24,6 +27,11 @@ class ImageDeleteRequest(BaseModel):
     start_date: str = ""
     end_date: str = ""
     all_matching: bool = False
+
+
+class ImageTagsRequest(BaseModel):
+    path: str
+    tags: list[str]
 
 
 def create_router(app_version: str) -> APIRouter:
@@ -62,7 +70,7 @@ def create_router(app_version: str) -> APIRouter:
     @router.post("/api/images/delete")
     async def delete_images_endpoint(body: ImageDeleteRequest, authorization: str | None = Header(default=None)):
         require_admin(authorization)
-        return delete_images(body.paths, start_date=body.start_date.strip(), end_date=body.end_date.strip(), all_matching=body.all_matching)
+        return delete_images(body.paths, start_date=body.start_date.strip(), end_date=end_date.strip(), all_matching=body.all_matching)
 
     @router.get("/api/logs")
     async def get_logs(type: str = "", start_date: str = "", end_date: str = "", authorization: str | None = Header(default=None)):
@@ -85,5 +93,42 @@ def create_router(app_version: str) -> APIRouter:
             "backend": storage.get_backend_info(),
             "health": storage.health_check(),
         }
+
+    @router.delete("/api/images")
+    async def delete_images_single(body: ImageDeleteRequest, authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        removed = 0
+        for rel in body.paths:
+            rel = rel.strip().lstrip("/")
+            if not rel:
+                continue
+            original = config.images_dir / rel
+            if original.is_file():
+                original.unlink()
+                delete_thumbnail(rel)
+                remove_tags(rel)
+                removed += 1
+        return {"removed": removed}
+
+    @router.get("/api/images/tags")
+    async def list_image_tags(authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        return {"tags": get_all_tags()}
+
+    @router.post("/api/images/tags")
+    async def update_image_tags(body: ImageTagsRequest, authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        rel = body.path.strip().lstrip("/")
+        if not rel:
+            raise HTTPException(status_code=400, detail={"error": "path is required"})
+        tags = set_tags(rel, body.tags)
+        return {"ok": True, "tags": tags}
+
+    @router.get("/image-thumbnails/{image_path:path}")
+    async def get_image_thumbnail(image_path: str):
+        thumb = await run_in_threadpool(get_thumbnail, image_path)
+        if thumb is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        return FileResponse(thumb, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
     return router

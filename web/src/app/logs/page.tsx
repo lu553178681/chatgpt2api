@@ -47,9 +47,27 @@ function getStatus(item: SystemLog) {
   return "-";
 }
 
+function toThumbnailUrl(url: string): string {
+  return url.replace("/images/", "/image-thumbnails/");
+}
+
+function ThumbnailImg({ url, className }: { url: string; className?: string }) {
+  const [src, setSrc] = useState(toThumbnailUrl(url));
+  return (
+    <img
+      src={src}
+      alt=""
+      className={className}
+      onError={() => {
+        if (src !== url) setSrc(url);
+      }}
+    />
+  );
+}
+
 function LogsContent() {
   const [items, setItems] = useState<SystemLog[]>([]);
-  const [type, setType] = useState(LogType.Call);
+  const [type, setType] = useState<string>(LogType.Call);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [detailLog, setDetailLog] = useState<SystemLog | null>(null);
@@ -129,7 +147,7 @@ function LogsContent() {
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <Table className="min-w-[820px]">
+            <Table className="min-w-[960px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>时间</TableHead>
@@ -137,6 +155,7 @@ function LogsContent() {
                   {isCallLog ? <TableHead>令牌名称</TableHead> : null}
                   {isCallLog ? <TableHead>调用耗时</TableHead> : null}
                   {isCallLog ? <TableHead>状态</TableHead> : null}
+                  {isCallLog ? <TableHead>图片</TableHead> : null}
                   <TableHead>简述</TableHead>
                   <TableHead className="w-28">详情</TableHead>
                 </TableRow>
@@ -153,6 +172,31 @@ function LogsContent() {
                         <Badge variant={item.detail?.status === "failed" ? "danger" : "success"} className="rounded-md">
                           {getStatus(item)}
                         </Badge>
+                      </TableCell>
+                    ) : null}
+                    {isCallLog ? (
+                      <TableCell>
+                        {(() => {
+                          const urls = getUrls(item);
+                          if (urls.length === 0) return <span className="text-stone-400">-</span>;
+                          const shown = urls.slice(0, 3);
+                          const extra = urls.length - shown.length;
+                          return (
+                            <div className="flex items-center gap-1">
+                              {shown.map((url) => (
+                                <button
+                                  key={url}
+                                  type="button"
+                                  className="size-8 shrink-0 overflow-hidden rounded border border-stone-200 bg-stone-100"
+                                  onClick={() => openDetail(item)}
+                                >
+                                  <ThumbnailImg url={url} className="h-full w-full object-cover" />
+                                </button>
+                              ))}
+                              {extra > 0 ? <span className="text-xs text-stone-400">+{extra}</span> : null}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                     ) : null}
                     <TableCell className="max-w-[420px] truncate text-stone-500">{item.summary || "-"}</TableCell>
@@ -205,7 +249,7 @@ function LogsContent() {
                     setLightboxOpen(true);
                   }}
                 >
-                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <ThumbnailImg url={url} className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>
