@@ -97,14 +97,13 @@ def create_router(app_version: str) -> APIRouter:
     @router.delete("/api/images")
     async def delete_images_single(body: ImageDeleteRequest, authorization: str | None = Header(default=None)):
         require_admin(authorization)
+        image_storage = config.get_image_storage()
         removed = 0
         for rel in body.paths:
             rel = rel.strip().lstrip("/")
             if not rel:
                 continue
-            original = config.images_dir / rel
-            if original.is_file():
-                original.unlink()
+            if image_storage.delete(rel):
                 delete_thumbnail(rel)
                 remove_tags(rel)
                 removed += 1

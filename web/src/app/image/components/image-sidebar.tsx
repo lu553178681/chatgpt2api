@@ -1,8 +1,10 @@
 "use client";
 
-import { LoaderCircle, MessageSquarePlus, Trash2 } from "lucide-react";
+import { LoaderCircle, MessageSquarePlus, Pencil, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getImageConversationStats, type ImageConversation } from "@/store/image-conversations";
 
@@ -14,6 +16,7 @@ type ImageSidebarProps = {
   onClearHistory: () => void | Promise<void>;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void | Promise<void>;
+  onRenameConversation: (id: string, title: string) => void | Promise<void>;
   formatConversationTime: (value: string) => string;
   hideActionButtons?: boolean;
 };
@@ -26,9 +29,28 @@ export function ImageSidebar({
   onClearHistory,
   onSelectConversation,
   onDeleteConversation,
+  onRenameConversation,
   formatConversationTime,
   hideActionButtons = false,
 }: ImageSidebarProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = (conversation: ImageConversation) => {
+    setEditingId(conversation.id);
+    setEditingTitle(conversation.title);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const commitEdit = () => {
+    const title = editingTitle.trim();
+    if (editingId && title) {
+      void onRenameConversation(editingId, title);
+    }
+    setEditingId(null);
+  };
+
   return (
     <aside className="h-full min-h-0 overflow-hidden">
       <div className="flex h-full min-h-0 flex-col gap-2 py-1 sm:gap-3 sm:py-2">
@@ -66,6 +88,7 @@ export function ImageSidebar({
             conversations.map((conversation) => {
               const active = conversation.id === selectedConversationId;
               const stats = getImageConversationStats(conversation);
+              const isEditing = editingId === conversation.id;
               return (
                 <div
                   key={conversation.id}
@@ -80,10 +103,30 @@ export function ImageSidebar({
                   <button
                     type="button"
                     onClick={() => onSelectConversation(conversation.id)}
-                    className={cn("block w-full text-left", hideActionButtons ? "pr-0" : "pr-8")}
+                    className="block w-full pr-16 text-left"
                   >
                     <div className={cn("truncate font-semibold", hideActionButtons ? "text-base" : "text-sm")}>
-                      <span className="truncate">{conversation.title}</span>
+                      {isEditing ? (
+                        <Input
+                          ref={inputRef}
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              commitEdit();
+                            }
+                            if (e.key === "Escape") {
+                              setEditingId(null);
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-6 rounded border-stone-300 bg-white px-1 text-sm font-semibold"
+                        />
+                      ) : (
+                        <span className="truncate">{conversation.title}</span>
+                      )}
                     </div>
                     <div className={cn("mt-1 text-xs", active ? "text-stone-500" : "text-stone-400")}>
                       {conversation.turns.length} 轮 · {formatConversationTime(conversation.updatedAt)}
@@ -99,16 +142,24 @@ export function ImageSidebar({
                       </div>
                     ) : null}
                   </button>
-                  {!hideActionButtons ? (
+                  <div className="absolute top-2.5 right-1.5 flex items-center gap-0.5 transition sm:opacity-0 sm:group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); startEdit(conversation); }}
+                      className="inline-flex size-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                      aria-label="重命名会话"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => void onDeleteConversation(conversation.id)}
-                      className="absolute top-3 right-2 inline-flex size-7 items-center justify-center rounded-md text-stone-400 opacity-0 transition hover:bg-stone-100 hover:text-rose-500 group-hover:opacity-100"
+                      className="inline-flex size-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-rose-500"
                       aria-label="删除会话"
                     >
                       <Trash2 className="size-4" />
                     </button>
-                  ) : null}
+                  </div>
                 </div>
               );
             })

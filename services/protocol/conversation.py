@@ -67,14 +67,17 @@ def encode_images(images: Iterable[tuple[bytes, str, str]]) -> list[str]:
 
 
 def save_image_bytes(image_data: bytes, base_url: str | None = None) -> str:
-    config.cleanup_old_images()
+    from services.image_storage.local_storage import LocalStorageBackend
+
     file_hash = hashlib.md5(image_data).hexdigest()
     filename = f"{int(time.time())}_{file_hash}.png"
     relative_dir = Path(time.strftime("%Y"), time.strftime("%m"), time.strftime("%d"))
-    file_path = config.images_dir / relative_dir / filename
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_bytes(image_data)
-    return f"{(base_url or config.base_url)}/images/{relative_dir.as_posix()}/{filename}"
+    relative_path = (relative_dir / filename).as_posix()
+
+    storage = config.get_image_storage()
+    if isinstance(storage, LocalStorageBackend):
+        storage.cleanup_old()
+    return storage.save(image_data, relative_path)
 
 
 def message_text(content: Any) -> str:

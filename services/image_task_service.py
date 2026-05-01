@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import json
 import threading
 import time
@@ -222,9 +223,15 @@ class ImageTaskService:
     ) -> None:
         started = time.time()
         self._update_task(key, status=TASK_STATUS_RUNNING, error="")
+        timeout = config.task_timeout_seconds
         try:
             handler = self.edit_handler if mode == "edit" else self.generation_handler
-            result = handler(payload)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(handler, payload)
+                try:
+                    result = future.result(timeout=timeout)
+                except FutureTimeoutError:
+                    raise TimeoutError(f"任务执行超时（{timeout}秒）")
             if not isinstance(result, dict):
                 raise RuntimeError("image task returned streaming result unexpectedly")
             data = result.get("data")

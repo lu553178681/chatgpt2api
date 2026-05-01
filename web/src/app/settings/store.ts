@@ -32,6 +32,14 @@ function normalizeConfig(config: SettingsConfig): SettingsConfig {
     ...config,
     refresh_account_interval_minute: Number(config.refresh_account_interval_minute || 5),
     image_retention_days: Number(config.image_retention_days || 30),
+    task_timeout_seconds: Number(config.task_timeout_seconds || 120),
+    upload_max_file_size_mb: Number(config.upload_max_file_size_mb ?? 5),
+    image_storage_backend: typeof config.image_storage_backend === "string" ? config.image_storage_backend : "local",
+    webdav_url: typeof config.webdav_url === "string" ? config.webdav_url : "",
+    webdav_public_url: typeof config.webdav_public_url === "string" ? config.webdav_public_url : "",
+    webdav_username: typeof config.webdav_username === "string" ? config.webdav_username : "",
+    webdav_base_path: typeof config.webdav_base_path === "string" ? config.webdav_base_path : "/images",
+    webdav_auth_type: typeof config.webdav_auth_type === "string" ? config.webdav_auth_type : "basic",
     auto_remove_invalid_accounts: Boolean(config.auto_remove_invalid_accounts),
     auto_remove_rate_limited_accounts: Boolean(config.auto_remove_rate_limited_accounts),
     log_levels: Array.isArray(config.log_levels) ? config.log_levels : [],
@@ -93,6 +101,15 @@ type SettingsStore = {
   saveConfig: () => Promise<void>;
   setRefreshAccountIntervalMinute: (value: string) => void;
   setImageRetentionDays: (value: string) => void;
+  setTaskTimeoutSeconds: (value: string) => void;
+  setUploadMaxFileSizeMb: (value: string) => void;
+  setImageStorageBackend: (value: string) => void;
+  setWebdavUrl: (value: string) => void;
+  setWebdavPublicUrl: (value: string) => void;
+  setWebdavUsername: (value: string) => void;
+  setWebdavPassword: (value: string) => void;
+  setWebdavBasePath: (value: string) => void;
+  setWebdavAuthType: (value: string) => void;
   setAutoRemoveInvalidAccounts: (value: boolean) => void;
   setAutoRemoveRateLimitedAccounts: (value: boolean) => void;
   setLogLevel: (level: string, enabled: boolean) => void;
@@ -198,6 +215,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         ...config,
         refresh_account_interval_minute: Math.max(1, Number(config.refresh_account_interval_minute) || 1),
         image_retention_days: Math.max(1, Number(config.image_retention_days) || 30),
+        task_timeout_seconds: Math.max(10, Number(config.task_timeout_seconds) || 120),
+        upload_max_file_size_mb: Math.max(0, Number(config.upload_max_file_size_mb) || 0),
+        image_storage_backend: config.image_storage_backend || "local",
+        webdav_url: String(config.webdav_url || "").trim(),
+        webdav_public_url: String(config.webdav_public_url || "").trim(),
+        webdav_username: String(config.webdav_username || "").trim(),
+        webdav_password: String(config.webdav_password || "").trim(),
+        webdav_base_path: String(config.webdav_base_path || "/images").trim(),
+        webdav_auth_type: config.webdav_auth_type || "basic",
         auto_remove_invalid_accounts: Boolean(config.auto_remove_invalid_accounts),
         auto_remove_rate_limited_accounts: Boolean(config.auto_remove_rate_limited_accounts),
         proxy: config.proxy.trim(),
@@ -230,6 +256,42 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setImageRetentionDays: (value) => {
     set((state) => state.config ? { config: { ...state.config, image_retention_days: value } } : {});
+  },
+
+  setTaskTimeoutSeconds: (value) => {
+    set((state) => state.config ? { config: { ...state.config, task_timeout_seconds: value } } : {});
+  },
+
+  setUploadMaxFileSizeMb: (value) => {
+    set((state) => state.config ? { config: { ...state.config, upload_max_file_size_mb: value } } : {});
+  },
+
+  setImageStorageBackend: (value) => {
+    set((state) => state.config ? { config: { ...state.config, image_storage_backend: value } } : {});
+  },
+
+  setWebdavUrl: (value) => {
+    set((state) => state.config ? { config: { ...state.config, webdav_url: value } } : {});
+  },
+
+  setWebdavPublicUrl: (value) => {
+    set((state) => state.config ? { config: { ...state.config, webdav_public_url: value } } : {});
+  },
+
+  setWebdavUsername: (value) => {
+    set((state) => state.config ? { config: { ...state.config, webdav_username: value } } : {});
+  },
+
+  setWebdavPassword: (value) => {
+    set((state) => state.config ? { config: { ...state.config, webdav_password: value } } : {});
+  },
+
+  setWebdavBasePath: (value) => {
+    set((state) => state.config ? { config: { ...state.config, webdav_base_path: value } } : {});
+  },
+
+  setWebdavAuthType: (value) => {
+    set((state) => state.config ? { config: { ...state.config, webdav_auth_type: value } } : {});
   },
 
   setAutoRemoveInvalidAccounts: (value) => {

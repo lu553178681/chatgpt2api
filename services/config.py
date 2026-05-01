@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 import time
 
+from services.image_storage.base import ImageStorageBackend
 from services.storage.base import StorageBackend
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -118,6 +119,21 @@ class ConfigStore:
         return bool(value)
 
     @property
+    def upload_max_file_size_mb(self) -> int:
+        try:
+            value = self.data.get("upload_max_file_size_mb", 5)
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 5
+
+    @property
+    def task_timeout_seconds(self) -> int:
+        try:
+            return max(10, int(self.data.get("task_timeout_seconds", 120)))
+        except (TypeError, ValueError):
+            return 120
+
+    @property
     def auto_remove_rate_limited_accounts(self) -> bool:
         value = self.data.get("auto_remove_rate_limited_accounts", False)
         if isinstance(value, str):
@@ -181,10 +197,19 @@ class ConfigStore:
         data = dict(self.data)
         data["refresh_account_interval_minute"] = self.refresh_account_interval_minute
         data["image_retention_days"] = self.image_retention_days
+        data["task_timeout_seconds"] = self.task_timeout_seconds
+        data["upload_max_file_size_mb"] = self.upload_max_file_size_mb
+        data["image_storage_backend"] = self.image_storage_backend_type
+        data["webdav_url"] = self.webdav_url
+        data["webdav_public_url"] = self.webdav_public_url
+        data["webdav_username"] = self.webdav_username
+        data["webdav_base_path"] = self.webdav_base_path
+        data["webdav_auth_type"] = self.webdav_auth_type
         data["auto_remove_invalid_accounts"] = self.auto_remove_invalid_accounts
         data["auto_remove_rate_limited_accounts"] = self.auto_remove_rate_limited_accounts
         data["log_levels"] = self.log_levels
         data.pop("auth-key", None)
+        data.pop("webdav_password", None)
         return data
 
     def get_proxy_settings(self) -> str:
@@ -195,6 +220,7 @@ class ConfigStore:
         next_data.update(dict(data or {}))
         self.data = next_data
         self._save()
+        self.reset_image_storage()
         return self.get()
 
     def get_storage_backend(self) -> StorageBackend:
@@ -203,6 +229,54 @@ class ConfigStore:
             from services.storage.factory import create_storage_backend
             self._storage_backend = create_storage_backend(DATA_DIR)
         return self._storage_backend
+
+    # ── Image storage backend ──
+
+    @property
+    def image_storage_backend_type(self) -> str:
+        return str(self.data.get("image_storage_backend") or "local").strip().lower()
+
+    @property
+    def webdav_url(self) -> str:
+        return str(self.data.get("webdav_url") or "").strip()
+
+    @property
+    def webdav_public_url(self) -> str:
+        return str(self.data.get("webdav_public_url") or "").strip()
+
+    @property
+    def webdav_username(self) -> str:
+        return str(self.data.get("webdav_username") or "").strip()
+
+    @property
+    def webdav_password(self) -> str:
+        return str(self.data.get("webdav_password") or "").strip()
+
+    @property
+    def webdav_base_path(self) -> str:
+        return str(self.data.get("webdav_base_path") or "/images").strip()
+
+    @property
+    def webdav_auth_type(self) -> str:
+        return str(self.data.get("webdav_auth_type") or "basic").strip().lower()
+
+    _image_storage: ImageStorageBackend | None = None
+
+    def get_image_storage(self) -> ImageStorageBackend:
+        """获取图片存储后端实例（单例），配置变更后需重启"""
+        if self._image_storage is None:
+            from services.image_storage.factory import create_image_storage
+            self._image_storage = create_image_storage(
+                config_data=self.data,
+                images_dir_str=str(self.images_dir),
+                base_url=self.base_url,
+                retention_days=self.image_retention_days,
+            )
+        return self._image_storage
+
+    def reset_image_storage(self) -> None:
+        """重置图片存储后端实例（配置变更后调用）"""
+        self._image_storage = None
 
 
 config = ConfigStore(CONFIG_FILE)

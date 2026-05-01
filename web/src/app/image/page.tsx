@@ -22,6 +22,7 @@ import {
   createImageGenerationTask,
   fetchAccounts,
   fetchImageTasks,
+  fetchSettingsConfig,
   type Account,
   type ImageTask,
 } from "@/lib/api";
@@ -101,6 +102,39 @@ function dataUrlToFile(dataUrl: string, fileName: string, mimeType?: string) {
     bytes[index] = binary.charCodeAt(index);
   }
   return new File([bytes], fileName, { type: mimeType || matchedMimeType || "image/png" });
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
+
+async function compressImage(file: File, maxWidth = 2048, quality = 0.8): Promise<File> {
+  const dataUrl = await readFileAsDataUrl(file);
+  const img = new Image();
+  const loaded = new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("加载图片失败"));
+  });
+  img.src = dataUrl;
+  await loaded;
+
+  let { width, height } = img;
+  if (width > maxWidth) {
+    height = Math.round(height * maxWidth / width);
+    width = maxWidth;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const blob = await new Promise<Blob>((resolve) =>
+    canvas.toBlob((b) => resolve(b!), file.type === "image/png" ? "image/png" : "image/jpeg", quality),
+  );
+  return new File([blob], file.name, { type: blob.type });
 }
 
 function buildReferenceImageFromResult(image: StoredImage, fileName: string): StoredReferenceImage | null {
@@ -355,6 +389,11 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "one"; id: string } | { type: "all" } | null>(null);
+  const [uploadMaxFileSizeMb, setUploadMaxFileSizeMb] = useState<number>(0);
+  const [compressDialog, setCompressDialog] = useState<{
+    files: File[];
+    oversized: Array<{ name: string; size: number }>;
+  } | null>(null);
 
   const parsedCount = useMemo(() => Number(clampImageCount(imageCount)), [imageCount]);
   const selectedConversation = useMemo(
@@ -380,6 +419,13 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
+
+  useEffect(() => {
+    fetchSettingsConfig().then((data) => {
+      const mb = Number(data.config.upload_max_file_size_mb ?? 0);
+      setUploadMaxFileSizeMb(mb > 0 ? mb : 0);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -549,6 +595,20 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     textareaRef.current?.focus();
   };
 
+  const handleRenameConversation = async (id: string, title: string) => {
+    const target = conversations.find((item) => item.id === id);
+    if (!target || target.title === title) return;
+    const updated = { ...target, title, updatedAt: new Date().toISOString() };
+    const nextConversations = conversations.map((item) => (item.id === id ? updated : item));
+    conversationsRef.current = nextConversations;
+    setConversations(nextConversations);
+    try {
+      await saveImageConversation(updated);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "重命名失败");
+    }
+  };
+
   const handleDeleteConversation = async (id: string) => {
     const nextConversations = conversations.filter((item) => item.id !== id);
     conversationsRef.current = nextConversations;
@@ -606,11 +666,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     await handleDeleteConversation(target.id);
   };
 
-  const appendReferenceImages = useCallback(async (files: File[]) => {
-    if (files.length === 0) {
-      return;
-    }
-
+  const doAppendFiles = useCallback(async (files: File[]) => {
     try {
       const previews = await Promise.all(
         files.map(async (file) => ({
@@ -619,17 +675,58 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
           dataUrl: await readFileAsDataUrl(file),
         })),
       );
-
       setReferenceImageFiles((prev) => [...prev, ...files]);
       setReferenceImages((prev) => [...prev, ...previews]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "读取参考图失败";
-      toast.error(message);
+      toast.error(error instanceof Error ? error.message : "读取参考图失败");
     }
   }, []);
+
+  const appendReferenceImages = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const limitBytes = uploadMaxFileSizeMb * 1024 * 1024;
+    if (limitBytes <= 0) {
+      await doAppendFiles(files);
+      return;
+    }
+    const oversized = files
+      .filter((f) => f.size > limitBytes)
+      .map((f) => ({ name: f.name, size: f.size }));
+    if (oversized.length === 0) {
+      await doAppendFiles(files);
+      return;
+    }
+    setCompressDialog({ files, oversized });
+  }, [uploadMaxFileSizeMb, doAppendFiles]);
+
+  const handleCompressAndUpload = useCallback(async () => {
+    if (!compressDialog) return;
+    const limitBytes = uploadMaxFileSizeMb * 1024 * 1024;
+    setCompressDialog(null);
+    toast.info("正在压缩图片...");
+    try {
+      const processed = await Promise.all(
+        compressDialog.files.map(async (file) => {
+          if (file.size <= limitBytes) return file;
+          let result = await compressImage(file, 2048, 0.8);
+          if (result.size > limitBytes) {
+            result = await compressImage(file, 1600, 0.6);
+          }
+          if (result.size > limitBytes) {
+            result = await compressImage(file, 1200, 0.5);
+          }
+          return result;
+        }),
+      );
+      await doAppendFiles(processed);
+      toast.success("压缩完成");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "压缩失败");
+    }
+  }, [compressDialog, uploadMaxFileSizeMb, doAppendFiles]);
 
   const handleReferenceImageChange = useCallback(
     async (files: File[]) => {
@@ -945,6 +1042,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             onClearHistory={openClearHistoryConfirm}
             onSelectConversation={setSelectedConversationId}
             onDeleteConversation={openDeleteConversationConfirm}
+            onRenameConversation={handleRenameConversation}
             formatConversationTime={formatConversationTime}
           />
         </div>
@@ -972,6 +1070,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
                   setIsHistoryOpen(false);
                 }}
                 onDeleteConversation={openDeleteConversationConfirm}
+                onRenameConversation={handleRenameConversation}
                 formatConversationTime={formatConversationTime}
                 hideActionButtons
               />
@@ -1045,6 +1144,35 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         onOpenChange={setLightboxOpen}
         onIndexChange={setLightboxIndex}
       />
+
+      {compressDialog ? (
+        <Dialog open onOpenChange={(open) => (!open ? setCompressDialog(null) : null)}>
+          <DialogContent showCloseButton={false} className="max-w-sm rounded-2xl p-6">
+            <DialogHeader className="gap-2">
+              <DialogTitle>文件过大</DialogTitle>
+              <DialogDescription className="text-sm leading-6">
+                以下文件超过 {uploadMaxFileSizeMb} MB 限制，是否压缩后上传？
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs">
+              {compressDialog.oversized.map((item) => (
+                <div key={item.name} className="flex items-center justify-between gap-2 text-stone-600">
+                  <span className="truncate font-medium text-stone-700">{item.name}</span>
+                  <span className="shrink-0 text-rose-500">{formatFileSize(item.size)}</span>
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" className="rounded-xl" onClick={() => setCompressDialog(null)}>
+                取消
+              </Button>
+              <Button className="rounded-xl bg-stone-950 text-white hover:bg-stone-800" onClick={() => void handleCompressAndUpload()}>
+                压缩并上传
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {deleteConfirm ? (
         <Dialog open onOpenChange={(open) => (!open ? setDeleteConfirm(null) : null)}>

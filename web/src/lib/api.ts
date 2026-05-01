@@ -55,6 +55,15 @@ export type SettingsConfig = {
   base_url?: string;
   refresh_account_interval_minute?: number | string;
   image_retention_days?: number | string;
+  task_timeout_seconds?: number | string;
+  upload_max_file_size_mb?: number | string;
+  image_storage_backend?: string;
+  webdav_url?: string;
+  webdav_public_url?: string;
+  webdav_username?: string;
+  webdav_password?: string;
+  webdav_base_path?: string;
+  webdav_auth_type?: string;
   auto_remove_invalid_accounts?: boolean;
   auto_remove_rate_limited_accounts?: boolean;
   log_levels?: string[];
