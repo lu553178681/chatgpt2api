@@ -278,13 +278,13 @@ function ImageManagerContent() {
                         }
                       }}
                     />
-                    <span className="absolute right-2 bottom-2 rounded-full bg-black/50 p-2 text-white opacity-0 transition group-hover:opacity-100">
+                    <span className="absolute right-2 bottom-2 rounded-full bg-black/50 p-2 text-white transition sm:opacity-0 sm:group-hover:opacity-100">
                       <Maximize2 className="size-4" />
                     </span>
                   </button>
                   <button
                     type="button"
-                    className="absolute top-2 right-2 z-10 inline-flex size-7 items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition hover:bg-red-600 group-hover:opacity-100"
+                    className="absolute top-2 right-2 z-10 inline-flex size-7 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-red-600 sm:opacity-0 sm:group-hover:opacity-100"
                     title="删除图片"
                     onClick={(e) => {
                       e.stopPropagation();
