@@ -1,9 +1,10 @@
 "use client";
 
-import { LoaderCircle, PlugZap, Save } from "lucide-react";
-import { useState } from "react";
+import { Check, LoaderCircle, PlugZap, Plus, Save, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +17,15 @@ import { useSettingsStore } from "../store";
 export function ConfigCard() {
   const [isTestingProxy, setIsTestingProxy] = useState(false);
   const [proxyTestResult, setProxyTestResult] = useState<ProxyTestResult | null>(null);
+  const [newWord, setNewWord] = useState("");
+  const [isAddingWord, setIsAddingWord] = useState(false);
+  const wordInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isAddingWord) {
+      wordInputRef.current?.focus();
+    }
+  }, [isAddingWord]);
   const logLevelOptions = ["debug", "info", "warning", "error"];
   const config = useSettingsStore((state) => state.config);
   const isLoadingConfig = useSettingsStore((state) => state.isLoadingConfig);
@@ -23,14 +33,14 @@ export function ConfigCard() {
   const setRefreshAccountIntervalMinute = useSettingsStore((state) => state.setRefreshAccountIntervalMinute);
   const setImageRetentionDays = useSettingsStore((state) => state.setImageRetentionDays);
   const setImagePollTimeoutSecs = useSettingsStore((state) => state.setImagePollTimeoutSecs);
-  const setImageAccountConcurrency = useSettingsStore((state) => state.setImageAccountConcurrency);
   const setAutoRemoveInvalidAccounts = useSettingsStore((state) => state.setAutoRemoveInvalidAccounts);
   const setAutoRemoveRateLimitedAccounts = useSettingsStore((state) => state.setAutoRemoveRateLimitedAccounts);
   const setLogLevel = useSettingsStore((state) => state.setLogLevel);
   const setProxy = useSettingsStore((state) => state.setProxy);
   const setBaseUrl = useSettingsStore((state) => state.setBaseUrl);
+  const setImageAccountConcurrency = useSettingsStore((state) => state.setImageAccountConcurrency);
   const setGlobalSystemPrompt = useSettingsStore((state) => state.setGlobalSystemPrompt);
-  const setSensitiveWordsText = useSettingsStore((state) => state.setSensitiveWordsText);
+  const setSensitiveWords = useSettingsStore((state) => state.setSensitiveWords);
   const setAIReviewField = useSettingsStore((state) => state.setAIReviewField);
   const saveConfig = useSettingsStore((state) => state.saveConfig);
 
@@ -74,16 +84,6 @@ export function ConfigCard() {
           管理员登录密钥继续从部署配置读取，不再在此页面展示；如需分发给其他人，请在下方创建普通用户密钥。
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm text-stone-700">账号刷新间隔</label>
-            <Input
-              value={String(config?.refresh_account_interval_minute || "")}
-              onChange={(event) => setRefreshAccountIntervalMinute(event.target.value)}
-              placeholder="分钟"
-              className="h-10 rounded-xl border-stone-200 bg-white"
-            />
-            <p className="text-xs text-stone-500">单位分钟，控制账号自动刷新频率。</p>
-          </div>
           <div className="space-y-2">
             <label className="text-sm text-stone-700">全局代理</label>
             <Input
@@ -133,6 +133,47 @@ export function ConfigCard() {
             <p className="text-xs text-stone-500">用于生成图片结果的访问前缀地址。</p>
           </div>
           <div className="space-y-2">
+            <label className="text-sm text-stone-700">账号刷新间隔</label>
+            <Input
+              value={String(config?.refresh_account_interval_minute || "")}
+              onChange={(event) => setRefreshAccountIntervalMinute(event.target.value)}
+              placeholder="分钟"
+              className="h-10 rounded-xl border-stone-200 bg-white"
+            />
+            <p className="text-xs text-stone-500">单位分钟，控制账号自动刷新频率。</p>
+          </div>
+          <div className="space-y-3 rounded-xl border border-stone-200 bg-white px-4 py-3">
+            <div>
+              <label className="text-sm text-stone-700">控制台日志级别</label>
+              <p className="mt-1 text-xs text-stone-500">不选择时使用默认 info / warning / error。</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {logLevelOptions.map((level) => (
+                <label key={level} className="flex items-center gap-2 text-sm capitalize text-stone-700">
+                  <Checkbox
+                    checked={Boolean(config?.log_levels?.includes(level))}
+                    onCheckedChange={(checked) => setLogLevel(level, Boolean(checked))}
+                  />
+                  {level}
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
+            <Checkbox
+              checked={Boolean(config?.auto_remove_invalid_accounts)}
+              onCheckedChange={(checked) => setAutoRemoveInvalidAccounts(Boolean(checked))}
+            />
+            自动移除异常账号
+          </label>
+          <label className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
+            <Checkbox
+              checked={Boolean(config?.auto_remove_rate_limited_accounts)}
+              onCheckedChange={(checked) => setAutoRemoveRateLimitedAccounts(Boolean(checked))}
+            />
+            自动移除限流账号
+          </label>
+          <div className="space-y-2">
             <label className="text-sm text-stone-700">图片自动清理</label>
             <Input
               value={String(config?.image_retention_days || "")}
@@ -157,61 +198,80 @@ export function ConfigCard() {
             <Input
               value={String(config?.image_account_concurrency || "")}
               onChange={(event) => setImageAccountConcurrency(event.target.value)}
-              placeholder="1"
+              placeholder="3"
               className="h-10 rounded-xl border-stone-200 bg-white"
             />
             <p className="text-xs text-stone-500">限制每个账号同时处理的图片请求数量，默认 3。</p>
-          </div>
-          <label className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
-            <Checkbox
-              checked={Boolean(config?.auto_remove_invalid_accounts)}
-              onCheckedChange={(checked) => setAutoRemoveInvalidAccounts(Boolean(checked))}
-            />
-            自动移除异常账号
-          </label>
-          <label className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
-            <Checkbox
-              checked={Boolean(config?.auto_remove_rate_limited_accounts)}
-              onCheckedChange={(checked) => setAutoRemoveRateLimitedAccounts(Boolean(checked))}
-            />
-            自动移除限流账号
-          </label>
-          <div className="space-y-3 rounded-xl border border-stone-200 bg-white px-4 py-3">
-            <div>
-              <label className="text-sm text-stone-700">控制台日志级别</label>
-              <p className="mt-1 text-xs text-stone-500">不选择时使用默认 info / warning / error。</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {logLevelOptions.map((level) => (
-                <label key={level} className="flex items-center gap-2 text-sm capitalize text-stone-700">
-                  <Checkbox
-                    checked={Boolean(config?.log_levels?.includes(level))}
-                    onCheckedChange={(checked) => setLogLevel(level, Boolean(checked))}
-                  />
-                  {level}
-                </label>
-              ))}
-            </div>
           </div>
           <div className="space-y-2 md:col-span-2">
             <label className="text-sm text-stone-700">全局附加指令</label>
             <Textarea
               value={String(config?.global_system_prompt || "")}
               onChange={(event) => setGlobalSystemPrompt(event.target.value)}
-              placeholder="例如：先判断用户提示词是否合规；遇到违法、色情、暴力、仇恨等请求时拒绝回答。"
-              className="min-h-28 rounded-xl border-stone-200 bg-white font-mono text-xs shadow-none"
+              placeholder="可选，对所有对话追加的系统级指令。"
+              className="min-h-20 rounded-xl border-stone-200 bg-white text-sm shadow-none"
             />
-            <p className="text-xs text-stone-500">每次请求都会作为 system 消息注入，可用于审核用户提示词、避免违规内容、统一约束模型行为或固定角色设定。</p>
+            <p className="text-xs text-stone-500">追加到所有请求的系统提示中，留空则不附加。</p>
           </div>
           <div className="space-y-2 md:col-span-2">
             <label className="text-sm text-stone-700">敏感词</label>
-            <Textarea
-              value={(config?.sensitive_words || []).join("\n")}
-              onChange={(event) => setSensitiveWordsText(event.target.value)}
-              placeholder="一行一个，命中即拒绝"
-              className="min-h-28 rounded-xl border-stone-200 bg-white font-mono text-xs shadow-none"
-            />
-            <p className="text-xs text-stone-500">只要用户请求包含任意敏感词，就直接返回拒绝。</p>
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2.5 min-h-[42px]">
+              {(config?.sensitive_words || []).filter(Boolean).map((word) => (
+                <Badge key={word} variant="secondary" className="gap-1 rounded-md pr-1">
+                  {word}
+                  <button
+                    type="button"
+                    onClick={() => setSensitiveWords((config?.sensitive_words || []).filter((w) => w !== word))}
+                    className="ml-0.5 rounded p-0.5 hover:bg-stone-200"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              ))}
+              {isAddingWord ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const word = newWord.trim();
+                    if (word) {
+                      const words = config?.sensitive_words || [];
+                      if (!words.includes(word)) {
+                        setSensitiveWords([...words, word]);
+                      }
+                      setNewWord("");
+                      setIsAddingWord(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md border border-stone-300 bg-white px-1.5 py-0.5"
+                >
+                  <input
+                    ref={wordInputRef}
+                    value={newWord}
+                    onChange={(e) => setNewWord(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setNewWord("");
+                        setIsAddingWord(false);
+                      }
+                    }}
+                    className="w-[80px] bg-transparent text-sm outline-none"
+                  />
+                  {newWord.trim() ? (
+                    <button type="submit" className="rounded p-0.5 text-emerald-600 hover:bg-emerald-50">
+                      <Check className="size-3.5" />
+                    </button>
+                  ) : null}
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsAddingWord(true)}
+                  className="inline-flex size-6 items-center justify-center rounded-md bg-stone-100 text-stone-500 transition hover:bg-stone-200 hover:text-stone-700"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              )}
+            </div>
           </div>
           <div className="space-y-4 rounded-xl border border-stone-200 bg-white px-4 py-3 md:col-span-2">
             <label className="flex items-center gap-3 text-sm text-stone-700">
@@ -221,9 +281,6 @@ export function ConfigCard() {
               />
               启用 AI 审核
             </label>
-            <p className="text-xs leading-6 text-stone-500">
-              开启后会在请求进入生图账号前先调用审核模型，审核不通过会直接拒绝，减少违规提示词触达账号造成风控或封号的风险。
-            </p>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <label className="text-sm text-stone-700">Base URL</label>
@@ -235,7 +292,7 @@ export function ConfigCard() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm text-stone-700">Model</label>
-                <Input value={String(config?.ai_review?.model || "")} onChange={(event) => setAIReviewField("model", event.target.value)} placeholder="gpt-5.4-mini" className="h-10 rounded-xl border-stone-200 bg-white" />
+                <Input value={String(config?.ai_review?.model || "")} onChange={(event) => setAIReviewField("model", event.target.value)} placeholder="gpt-4.1-mini" className="h-10 rounded-xl border-stone-200 bg-white" />
               </div>
             </div>
             <div className="space-y-2">

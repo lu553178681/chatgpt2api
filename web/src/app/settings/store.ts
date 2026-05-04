@@ -180,6 +180,7 @@ type SettingsStore = {
   setBaseUrl: (value: string) => void;
   setGlobalSystemPrompt: (value: string) => void;
   setSensitiveWordsText: (value: string) => void;
+  setSensitiveWords: (words: string[]) => void;
   setAIReviewField: (key: "enabled" | "base_url" | "api_key" | "model" | "prompt", value: string | boolean) => void;
   setBackupField: (key: keyof BackupSettings, value: string | boolean) => void;
   setBackupInclude: (key: keyof BackupSettings["include"], value: boolean) => void;
@@ -420,6 +421,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setSensitiveWordsText: (value) => {
     set((state) => state.config ? { config: { ...state.config, sensitive_words: value.split("\n") } } : {});
+  },
+
+  setSensitiveWords: (words) => {
+    set((state) => state.config ? { config: { ...state.config, sensitive_words: words } } : {});
   },
 
   setAIReviewField: (key, value) => {
